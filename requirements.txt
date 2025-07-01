@@ -4,3 +4,8 @@ sqlalchemy
 psycopg2-binary
 faiss-cpu
 sentence-transformers
+python-dotenv
+huggingface_hub
+langchain
+langchain-community
+langchain-huggingface

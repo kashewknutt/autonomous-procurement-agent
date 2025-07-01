@@ -3,12 +3,17 @@ version: '3.8'
 services:
   procurement-agent:
     build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     depends_on:
       - db
+    volumes:
+      - .:/app
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/procurement
+      PYTHONUNBUFFERED: 1
+    env_file:
+      - .env
 
   db:
     image: postgres:15

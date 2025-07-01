@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, Body
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
+from app.agent.core import get_agent
 from app.db.models import Quote
 from app.embeddings.faiss_index import add_documents_with_ids, search_ids, reset_index
+from .agent_route import router as agent_router
 
 router = APIRouter()
-
+router.include_router(agent_router)
 def get_db():
     db = SessionLocal()
     try:
@@ -44,3 +46,9 @@ def reset(db: Session = Depends(get_db)):
     db.query(Quote).delete()
     db.commit()
     return {"message": "FAISS and database reset."}
+
+@router.post("/agent")
+def agent_query(input: str = Body(...)):
+    agent = get_agent()
+    result = agent.run(input)
+    return {"response": result}

@@ -58,14 +58,14 @@ This project aims to replicate real-world enterprise agent use cases and will be
 - [X] Set up GitHub repo with MIT license
 - [X] Scaffold project with FastAPI + Docker + FAISS
 - [X] Configure Gmail API or SMTP (sandbox email)
-- [ ] Add REST API endpoints for testing (quotes, suppliers, etc.)
+- [X] Add REST API endpoints for testing (quotes, suppliers, etc.)
 
 ### Phase 2: Agent Framework Integration
 
-- [ ] Integrate LangChain agent loop
-- [ ] Build memory (ConversationBufferMemory or RedisMemory)
-- [ ] Add tools for: REST API calls, vector DB search, policy check
-- [ ] Define ReAct-style prompts
+- [X] Integrate LangChain agent loop
+- [X] Build memory (ConversationBufferMemory or RedisMemory)
+- [X] Add tools for: REST API calls, vector DB search, policy check
+- [X] Define ReAct-style prompts
 
 ### Phase 3: Embedding & Comparison
 
