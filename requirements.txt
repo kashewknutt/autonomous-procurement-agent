@@ -1,5 +1,6 @@
 fastapi
-uvicorn[standard]
-sentence-transformers
+uvicorn
+sqlalchemy
+psycopg2-binary
 faiss-cpu
-numpy
+sentence-transformers

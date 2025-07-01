@@ -55,9 +55,9 @@ This project aims to replicate real-world enterprise agent use cases and will be
 
 ### Phase 1: Bootstrap
 
-- [ ] Set up GitHub repo with MIT license
-- [ ] Scaffold project with FastAPI + Docker + FAISS
-- [ ] Configure Gmail API or SMTP (sandbox email)
+- [X] Set up GitHub repo with MIT license
+- [X] Scaffold project with FastAPI + Docker + FAISS
+- [X] Configure Gmail API or SMTP (sandbox email)
 - [ ] Add REST API endpoints for testing (quotes, suppliers, etc.)
 
 ### Phase 2: Agent Framework Integration

@@ -1,6 +1,10 @@
 from fastapi import FastAPI
-from app.api.routes import router as api_router
+from app.api.routes import router
+from app.db.init_db import init_db
 
-app = FastAPI(title="Autonomous Procurement Agent")
+app = FastAPI()
+app.include_router(router, prefix="/api")
 
-app.include_router(api_router, prefix="/api")
+@app.on_event("startup")
+def on_startup():
+    init_db()

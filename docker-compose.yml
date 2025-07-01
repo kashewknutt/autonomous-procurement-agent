@@ -1,11 +1,24 @@
-version: '3.9'
+version: '3.8'
 
 services:
   procurement-agent:
     build: .
     ports:
       - "8000:8000"
-    volumes:
-      - ./app:/app
+    depends_on:
+      - db
     environment:
-      - PYTHONUNBUFFERED=1
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/procurement
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: procurement
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

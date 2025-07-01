@@ -2,24 +2,30 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-# Simple in-memory FAISS setup
-dimension = 384
-index = faiss.IndexFlatL2(dimension)
+# Load embedding model
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Dummy quotes to embed
-quotes = [
-    "We offer a 10% discount on bulk orders",
-    "Shipping will take 7-10 business days",
-    "We cannot reduce the price further"
-]
+# Initialize FAISS index
+dimension = 384  # All-MiniLM-L6-v2 outputs 384-dim vectors
+index = faiss.IndexFlatL2(dimension)
+documents = []  # In-memory list for mapping results
 
-# Create embeddings and add to FAISS
-embeddings = model.encode(quotes)
-index.add(np.array(embeddings))
+def reset_index():
+    global index, documents
+    index = faiss.IndexFlatL2(dimension)
+    documents = []
 
-def search_similar_quotes(query: str, top_k: int = 2):
-    query_vector = model.encode([query])
-    distances, indices = index.search(np.array(query_vector), top_k)
-    results = [quotes[i] for i in indices[0]]
-    return results
+def add_documents_with_ids(texts: list[str], ids: list[int]):
+    global documents
+    embeddings = model.encode(texts)
+    index.add(np.array(embeddings).astype("float32"))
+    documents.extend(ids)
+
+def search_ids(query: str, top_k: int = 3) -> list[int]:
+    if index.ntotal == 0:
+        return []
+
+    embedding = model.encode([query])
+    distances, indices = index.search(np.array(embedding).astype("float32"), top_k)
+    return [documents[i] for i in indices[0]]
+
