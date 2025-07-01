@@ -7,5 +7,6 @@ sentence-transformers
 python-dotenv
 huggingface_hub
 langchain
-langchain-community
 langchain-huggingface
+chromadb
+spacy>=3.4.0

@@ -40,6 +40,91 @@ This project aims to replicate real-world enterprise agent use cases and will be
 
 ---
 
+### 🛠️ Local PostgreSQL Setup (Windows)
+
+To run the app locally without Docker, you need a local PostgreSQL instance that matches the following `DATABASE_URL` format:
+
+```
+postgresql+psycopg2://postgres:postgres@localhost:5432/procurement
+```
+
+Follow these steps to install and configure PostgreSQL on Windows:
+
+---
+
+#### 1. **Download and Install PostgreSQL**
+
+- Visit: https://www.postgresql.org/download/windows/
+- Download the **PostgreSQL Installer** via **EDB** and run it.
+- During setup:
+  - Choose a version (default is fine)
+  - Set **password** to: `postgres` (or update `.env` to match your password)
+  - Keep the default **port**: `5432`
+  - Install additional tools like **pgAdmin** (optional but helpful)
+
+---
+
+#### 2. **Create the `procurement` Database**
+
+After installation:
+
+1. Open **pgAdmin** or use the **SQL Shell (psql)**.
+2. Run the following SQL commands:
+
+```sql
+CREATE DATABASE procurement;
+```
+
+If using `psql`:
+
+```bash
+psql -U postgres
+# Enter password: postgres
+postgres=# CREATE DATABASE procurement;
+```
+
+---
+
+#### 3. **Update `.env`**
+
+Make sure your `.env` file contains:
+
+```env
+DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/procurement"
+```
+
+> Note: Replace `localhost` with `127.0.0.1` if `localhost` gives any issues.
+
+---
+
+#### 4. **Install Python Dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+#### 5. **Initialize the Database**
+
+Ensure your app has code to initialize tables (e.g. `Base.metadata.create_all(bind=engine)`), then run:
+
+```bash
+python -m app.main
+```
+
+Or, if your project provides a specific init script:
+
+```bash
+python app/db/init_db.py
+```
+
+---
+
+You’re now connected to a local PostgreSQL instance running on Windows. Your FastAPI app should work with the database on `localhost:5432`.
+
+---
+
 ## 🧭 Strategy
 
 1. **MVP First**: Email bot → quote embedder → quote comparator → DB writer.
@@ -69,9 +154,9 @@ This project aims to replicate real-world enterprise agent use cases and will be
 
 ### Phase 3: Embedding & Comparison
 
-- [ ] Use sentence-transformers to embed supplier quotes
-- [ ] Store vectors using FAISS or ChromaDB
-- [ ] Add similarity threshold matching logic
+- [X] Use sentence-transformers to embed supplier quotes
+- [X] Store vectors using FAISS or ChromaDB
+- [X] Add similarity threshold matching logic
 
 ### Phase 4: Email Interaction
 
@@ -81,7 +166,7 @@ This project aims to replicate real-world enterprise agent use cases and will be
 
 ### Phase 5: Quote Database
 
-- [ ] Create a PostgreSQL DB schema for quotes and suppliers
+- [X] Create a PostgreSQL DB schema for quotes and suppliers
 - [ ] Integrate Supabase (or local pg via Docker)
 - [ ] Build CRUD APIs for quote history
 
@@ -104,19 +189,19 @@ This project aims to replicate real-world enterprise agent use cases and will be
 
 ### AI/Agent
 
-- [ ] LangChain Agent Setup
-- [ ] Tools created: EmailSenderTool, QuoteEmbedderTool, APICallTool
-- [ ] Memory chain enabled
+- [X] LangChain Agent Setup
+- [X] Tools created
+- [X] Memory chain enabled
 
 ### Embedding & DB
 
-- [ ] SentenceTransformer integration
-- [ ] FAISS/Chroma vector DB
-- [ ] PostgreSQL tables for quotes and suppliers
+- [X] SentenceTransformer integration
+- [X] FAISS/Chroma vector DB
+- [X] PostgreSQL tables for quotes and suppliers
 
 ### Email Layer
 
-- [ ] SMTP/Gmail API integration
+- [X] SMTP/Gmail API integration
 - [ ] Parsing inbound emails
 - [ ] Auto-reply with LLM-generated follow-up
 
@@ -134,13 +219,12 @@ This project aims to replicate real-world enterprise agent use cases and will be
 autonomous-procurement-agent/
 ├── app/
 │   ├── agents/
-│   ├── email/
 │   ├── embeddings/
 │   ├── api/
 │   ├── db/
 │   └── utils/
 ├── tests/
-├── requirements.txt / pyproject.toml
+├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
 └── README.md

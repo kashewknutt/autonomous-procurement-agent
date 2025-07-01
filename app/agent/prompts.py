@@ -1,3 +1,4 @@
+## app/agent/prompts.py
 from langchain.agents import AgentType
 
 DEFAULT_AGENT_PREFIX = """
@@ -15,7 +16,7 @@ You must reason step by step and use tools where appropriate.
 Use this format exactly:
 
 Thought: Describe what you want to do next
-Action: One of [search_quotes_tool, get_best_quote_under_budget, check_procurement_policy]
+Action: One of [search_quotes_by_vertical, find_best_quote_for_quantity, procurement_requirements_form, search_quotes_tool, search_best_quote, check_procurement_policy]
 Action Input: The input string in quotes
 
 Important: NEVER write `Action: tool_name("input")`. Always use two lines, one for `Action:` and one for `Action Input:`.
