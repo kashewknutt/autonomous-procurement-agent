@@ -9,7 +9,6 @@ import requests
 import re
 import spacy
 from typing import Dict, List, Optional
-from datetime import datetime
 
 PROCUREMENT_VERTICALS = {
     "manufacturing": ["widgets", "components", "parts", "machinery", "equipment", "tools"],
@@ -209,7 +208,7 @@ def llm_rerank_fallback(text: str, quote_list: list[Quote]) -> str:
     )
     for i, q in enumerate(quote_list):
         prompt += (
-            f"{i+1}. Supplier: {q.supplier}, Price: ${q.price:.2f}, "
+            f"{i+1}. Supplier: {q.supplier}, Price: ${q.total_price:.2f}, "
             f"Details: {q.content}\n"
         )
     prompt += "Pick the best quote and explain why."
@@ -234,39 +233,70 @@ def search_quotes_by_vertical(query: str) -> str:
     try:
         prefs = extract_preferences(query)
         vertical = prefs.get("vertical", "general")
+        budget = prefs.get("budget")
+        quantity = prefs.get("quantity", 1)
         
         # Search by vertical first
         base_query = db.query(Quote)
         if vertical != "general":
             base_query = base_query.filter(Quote.vertical == vertical)
         
-        # Then apply semantic search
+        # Apply semantic search
         search_variations = expand_search_terms(query)
         all_matching_ids = set()
         
-        for variation in search_variations:
-            ids = search_quote_ids(variation, top_k=10, threshold=0.4)
-            all_matching_ids.update(ids)
+        for variation in search_variations[:3]:  # Limit variations to prevent timeout
+            try:
+                ids = search_quote_ids(variation, top_k=5, threshold=0.4)
+                all_matching_ids.update(ids)
+            except Exception:
+                continue  # Skip failed variations
         
         if all_matching_ids:
             quotes = base_query.filter(Quote.id.in_(all_matching_ids)).all()
         else:
             # Fallback to vertical-only search
-            quotes = base_query.limit(10).all()
+            quotes = base_query.limit(8).all()
         
         if not quotes:
-            return f"No quotes found for {vertical} vertical. Available verticals: {', '.join(PROCUREMENT_VERTICALS.keys())}"
+            available_verticals = ", ".join(PROCUREMENT_VERTICALS.keys())
+            return f"No quotes found for '{vertical}' category. Try: {available_verticals}"
         
-        result = f"Found {len(quotes)} quotes in {vertical} vertical:\n\n"
-        for i, q in enumerate(quotes, 1):
-            unit_price = f"${q.unit_price:.2f}/unit" if q.unit_price else "N/A"
-            total_price = f"${q.total_price:.2f} total" if q.total_price else "N/A"
-            qty_info = f"Min qty: {q.quantity}" if q.quantity else "No min qty"
+        # Apply filters
+        if budget:
+            quotes = [q for q in quotes if (q.total_price or q.total_price or 0) <= budget]
+        
+        if not quotes:
+            return f"No quotes found within budget of ${budget:,.2f} for {vertical} category."
+        
+        # Sort by total cost for quantity
+        for quote in quotes:
+            if quote.unit_price and quantity:
+                quote._calculated_total = quote.unit_price * quantity
+            else:
+                quote._calculated_total = quote.total_price or quote.total_price or 0
+        
+        quotes.sort(key=lambda q: q._calculated_total)
+        
+        result = f"Found {len(quotes)} quotes in {vertical} category"
+        if budget:
+            result += f" under ${budget:,.2f}"
+        if quantity > 1:
+            result += f" for {quantity} units"
+        result += ":\n\n"
+        
+        for i, q in enumerate(quotes[:6], 1):
+            total_cost = getattr(q, '_calculated_total', 0)
+            unit_price = f"${q.unit_price:.2f}/unit" if q.unit_price else "Quote required"
             
-            result += f"{i}. {q.supplier} | {unit_price} | {total_price} | {qty_info}\n"
-            result += f"   {q.content}\n\n"
+            result += f"{i}. {q.supplier}\n"
+            result += f"   Price: {unit_price} | Total: ${total_cost:,.2f}\n"
+            result += f"   Details: {q.content[:80]}...\n\n"
         
         return result.strip()
+    
+    except Exception as e:
+        return f"Search failed. Please try a more specific query or check available categories."
     
     finally:
         db.close()
@@ -391,78 +421,102 @@ def procurement_requirements_form(query: str) -> str:
 
 @tool
 def search_best_quote(details: str) -> str:
-    """Enhanced quote search with multiple strategies and fallbacks."""
+    """Enhanced quote search with multiple strategies and fallbacks, considering quantity, vertical, and other preferences."""
     db: Session = SessionLocal()
     try:
         prefs = extract_preferences(details)
         budget = prefs.get("budget", None)
-        
+        quantity = prefs.get("quantity", 1)
+        vertical = prefs.get("vertical", "general")
+        min_quantity = prefs.get("min_quantity")
+        quality = prefs.get("quality")
+        materials = prefs.get("materials")
+        urgent = prefs.get("urgent")
+
         # Strategy 1: Try multiple search variations
         search_variations = expand_search_terms(details)
         all_matching_ids = set()
-        
         for variation in search_variations:
-            ids = search_quote_ids(variation, top_k=10, threshold=0.5)  # Lower threshold
+            ids = search_quote_ids(variation, top_k=10, threshold=0.5)
             all_matching_ids.update(ids)
-        
+
         # Strategy 2: If no semantic matches, try keyword-based search
         if not all_matching_ids:
             keywords = details.lower().split()
             db_quotes = db.query(Quote).all()
-            
             for quote in db_quotes:
                 content_lower = quote.content.lower()
                 if any(keyword in content_lower for keyword in keywords):
                     all_matching_ids.add(quote.id)
-        
+
         # Strategy 3: If still no matches, use NLP similarity
         if not all_matching_ids:
             all_quotes = db.query(Quote).all()
             similar_quotes = semantic_search_fallback(details, all_quotes)
             all_matching_ids.update(q.id for q in similar_quotes)
-        
+
         # Get quotes from IDs
         if all_matching_ids:
             quotes = db.query(Quote).filter(Quote.id.in_(all_matching_ids)).order_by(Quote.total_price.asc()).all()
         else:
             # Last resort: return cheapest quotes
-            quotes = db.query(Quote).order_by(Quote.price.asc()).limit(5).all()
-        
+            quotes = db.query(Quote).order_by(Quote.total_price.asc()).limit(5).all()
+
+        # Filter by vertical
+        if vertical and vertical != "general":
+            quotes = [q for q in quotes if q.vertical == vertical]
+        # Filter by min_quantity
+        if min_quantity:
+            quotes = [q for q in quotes if q.quantity and q.quantity >= min_quantity]
+        # Filter by quality (if you have a way to map quality to content or metadata)
+        if quality:
+            quotes = [q for q in quotes if quality in (q.content.lower() if q.content else "")]
+        # Filter by materials
+        if materials:
+            quotes = [q for q in quotes if any(mat in (q.content.lower() if q.content else "") for mat in materials)]
+        # Filter by urgency (if you have a way to map urgency to content or metadata)
+        # ... (custom logic if needed)
+
         if not quotes:
-            return "No supplier quotes found in the database. Please add some quotes first."
-        
+            return "No supplier quotes found in the database matching all criteria. Please add some quotes first."
+
         # Apply budget filter
         if budget:
-            budget_filtered = [q for q in quotes if q.price <= budget]
+            budget_filtered = [q for q in quotes if q.total_price and q.total_price <= budget]
             if budget_filtered:
                 best = budget_filtered[0]
                 return (
-                    f"Best quote under ${budget}:\n"
+                    f"Best quote under ${budget} for {quantity} units in {vertical} category:\n"
                     f"Supplier: {best.supplier}\n"
-                    f"Price: ${best.price:.2f}\n"
+                    f"Price: ${best.total_price:.2f}\n"
+                    f"Quantity: {best.quantity}\n"
+                    f"Vertical: {best.vertical}\n"
                     f"Details: {best.content}\n"
                     f"Match confidence: High"
                 )
             else:
                 # Show closest alternatives
-                closest = min(quotes, key=lambda q: abs(q.price - budget))
+                closest = min(quotes, key=lambda q: abs((q.total_price or 0) - budget))
                 return (
-                    f"No quotes found under ${budget}. Closest option:\n"
+                    f"No quotes found under ${budget}. Closest option for {quantity} units in {vertical} category:\n"
                     f"Supplier: {closest.supplier}\n"
-                    f"Price: ${closest.price:.2f} (${closest.price - budget:.2f} over budget)\n"
+                    f"Price: ${closest.total_price:.2f} (${(closest.total_price or 0) - budget:.2f} over budget)\n"
+                    f"Quantity: {closest.quantity}\n"
+                    f"Vertical: {closest.vertical}\n"
                     f"Details: {closest.content}"
                 )
         else:
             # No budget constraint
             best = quotes[0]
             return (
-                f"Best matching quote:\n"
+                f"Best matching quote for {quantity} units in {vertical} category:\n"
                 f"Supplier: {best.supplier}\n"
-                f"Price: ${best.price:.2f}\n"
+                f"Price: ${best.total_price:.2f}\n"
+                f"Quantity: {best.quantity}\n"
+                f"Vertical: {best.vertical}\n"
                 f"Details: {best.content}\n"
                 f"Found {len(quotes)} total matches"
             )
-    
     finally:
         db.close()
 
@@ -552,3 +606,197 @@ def check_procurement_policy(text: str) -> str:
         return "FLAGGED: Large quantity order requires additional approval."
     
     return f"PASSED: Complies with {vertical} procurement policy (limit: ${limit:,.2f})"
+
+@tool
+def route_tool_selection(query: str) -> str:
+    """Sub-agent that intelligently routes queries to appropriate tools."""
+    query_lower = query.lower()
+    prefs = extract_preferences(query)
+    
+    # Check for policy-related queries
+    policy_keywords = ["policy", "allowed", "complies", "restriction", "limit", "approve"]
+    if any(keyword in query_lower for keyword in policy_keywords):
+        return "check_procurement_policy_tool"
+    
+    # Check for general domain queries (non-quote related)
+    general_keywords = ["what is", "explain", "help", "guide", "how to", "process", "procedure"]
+    if any(keyword in query_lower for keyword in general_keywords):
+        return "procurement_knowledge_tool"
+    
+    # Check for contract/vendor management
+    contract_keywords = ["contract", "vendor", "supplier relationship", "negotiation", "agreement"]
+    if any(keyword in query_lower for keyword in contract_keywords):
+        return "vendor_management_tool"
+    
+    # Check for quantity-specific searches
+    if "quantity" in prefs or any(word in query_lower for word in ["units", "bulk", "volume"]):
+        return "find_best_quote_for_quantity_tool"
+    
+    # Check for budget-specific searches
+    if "budget" in prefs or any(word in query_lower for word in ["under", "cheap", "affordable", "cost"]):
+        return "search_best_quote_tool"
+    
+    # Check for vertical/category searches
+    vertical = prefs.get("vertical", "general")
+    if vertical != "general" or any(v in query_lower for v in PROCUREMENT_VERTICALS.keys()):
+        return "search_quotes_by_vertical_tool"
+    
+    # Default to general search
+    return "search_quotes_tool_tool"
+
+@tool
+def procurement_knowledge_tool(query: str) -> str:
+    """Handle general procurement domain queries and knowledge requests."""
+    query_lower = query.lower()
+    
+    knowledge_base = {
+        "procurement process": """
+Standard Procurement Process:
+1. Requirement Identification
+2. Market Research & Supplier Identification
+3. RFQ/RFP Creation
+4. Quote Collection & Evaluation
+5. Supplier Selection & Negotiation
+6. Contract Award
+7. Order Management & Delivery
+8. Invoice Processing & Payment
+9. Performance Monitoring
+        """,
+        
+        "rfq": """
+Request for Quote (RFQ) Process:
+- Used for standard items with clear specifications
+- Focuses primarily on price comparison
+- Shorter timeline than RFP
+- Typically for purchases under $50K
+- Include: specifications, quantity, delivery date, terms
+        """,
+        
+        "rfp": """
+Request for Proposal (RFP) Process:
+- Used for complex requirements
+- Evaluates multiple factors: price, quality, capability
+- Longer evaluation process
+- Typically for purchases over $50K
+- Include: scope of work, evaluation criteria, timeline
+        """,
+        
+        "supplier evaluation": """
+Supplier Evaluation Criteria:
+1. Financial Stability (30%)
+2. Quality Standards & Certifications (25%)
+3. Delivery Performance (20%)
+4. Price Competitiveness (15%)
+5. Technical Capability (10%)
+
+Key metrics: On-time delivery %, Quality rejection rate, Cost savings
+        """,
+        
+        "cost analysis": """
+Total Cost of Ownership (TCO) Analysis:
+- Purchase Price
+- Shipping & Handling
+- Installation Costs
+- Maintenance & Support
+- Training Requirements
+- End-of-life Disposal
+
+Always consider TCO, not just unit price.
+        """,
+        
+        "procurement verticals": f"""
+Available Procurement Categories:
+{chr(10).join([f"• {v.title()}: {', '.join(keywords)}" for v, keywords in PROCUREMENT_VERTICALS.items()])}
+        """
+    }
+    
+    # Find relevant knowledge
+    for topic, content in knowledge_base.items():
+        if topic in query_lower or any(word in query_lower for word in topic.split()):
+            return content
+    
+    # Provide general guidance
+    if "help" in query_lower or "guide" in query_lower:
+        return """
+Procurement Assistant Help:
+• Search quotes: "find steel pipes" or "office furniture quotes"
+• Budget searches: "cables under $500" or "cheap industrial parts"
+• Quantity pricing: "best price for 1000 units"
+• Policy checks: "is this purchase allowed?"
+• Category searches: "construction materials" or "IT equipment"
+
+For specific procurement knowledge, ask about: RFQ, RFP, supplier evaluation, cost analysis
+        """
+    
+    return f"I can help with procurement processes, RFQ/RFP guidance, supplier evaluation, and cost analysis. What specific aspect would you like to know about?"
+
+@tool
+def vendor_management_tool(query: str) -> str:
+    """Handle vendor relationship and contract management queries."""
+    db = SessionLocal()
+    try:
+        query_lower = query.lower()
+        
+        if "performance" in query_lower:
+            # Mock vendor performance data
+            return """
+Vendor Performance Metrics:
+• Supplier A: 95% on-time, 2% defect rate, $2.3M spend
+• Supplier B: 88% on-time, 5% defect rate, $1.8M spend  
+• Supplier C: 92% on-time, 1% defect rate, $3.1M spend
+
+Top Performers: Supplier C (quality), Supplier A (reliability)
+Action Items: Review Supplier B performance improvement plan
+            """
+        
+        elif "contract" in query_lower:
+            return """
+Contract Management Best Practices:
+1. Standardize contract templates
+2. Define clear SLAs and KPIs
+3. Include price adjustment mechanisms
+4. Set regular review schedules
+5. Establish dispute resolution procedures
+
+Key clauses: Payment terms, delivery requirements, quality standards, liability limits
+            """
+        
+        elif "negotiation" in query_lower:
+            return """
+Negotiation Strategies:
+• Prepare with market research and alternatives
+• Focus on total value, not just price
+• Leverage volume commitments for discounts
+• Negotiate payment terms and delivery schedules
+• Build long-term partnership opportunities
+
+Win-win outcomes create sustainable supplier relationships
+            """
+        
+        elif "relationship" in query_lower:
+            return """
+Supplier Relationship Management:
+• Regular business reviews (quarterly)
+• Performance scorecards and feedback
+• Joint improvement initiatives
+• Early supplier involvement in new projects
+• Strategic partnership agreements
+
+Strong relationships improve quality, innovation, and cost efficiency
+            """
+        
+        else:
+            return """
+Vendor Management Services:
+• Performance monitoring and scorecards
+• Contract negotiation support
+• Supplier relationship optimization
+• Risk assessment and mitigation
+• Strategic sourcing initiatives
+
+What specific vendor management area do you need help with?
+            """
+    
+    finally:
+        db.close()
+
