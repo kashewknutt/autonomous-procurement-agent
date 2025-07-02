@@ -10,3 +10,4 @@ langchain
 langchain-openai
 chromadb
 spacy>=3.4.0
+google-api-python-client
