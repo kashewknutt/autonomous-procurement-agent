@@ -161,15 +161,7 @@ You’re now connected to a local PostgreSQL instance running on Windows. Your F
 ### Phase 4: Quote Database
 
 - [X] Create a PostgreSQL DB schema for quotes and suppliers
-- [ ] Integrate Supabase (or local pg via Docker)
-- [ ] Build CRUD APIs for quote history
-
-### Phase 5: Deployment & Docs
-
-- [ ] Dockerize the app fully
-- [ ] Deploy to Fly.io or Render (CI/CD optional)
-- [ ] Create full README and open-source CONTRIBUTING.md
-- [ ] Add unit tests for all major components
+- [X] Build CRUD APIs for quote history
 
 ---
 
@@ -192,12 +184,6 @@ You’re now connected to a local PostgreSQL instance running on Windows. Your F
 - [X] SentenceTransformer integration
 - [X] FAISS/Chroma vector DB
 - [X] PostgreSQL tables for quotes and suppliers
-
-### Deployment
-
-- [ ] Dockerfile and docker-compose
-- [ ] Deployment scripts (Fly.io or Render)
-- [ ] Database hosted (Supabase or Dockerized pg)
 
 ---
 
