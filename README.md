@@ -158,19 +158,13 @@ You’re now connected to a local PostgreSQL instance running on Windows. Your F
 - [X] Store vectors using FAISS or ChromaDB
 - [X] Add similarity threshold matching logic
 
-### Phase 4: Email Interaction
-
-- [ ] Build email parsing layer (using `imaplib` or Gmail API)
-- [ ] Draft response generator (LangChain LLMChain)
-- [ ] Implement exception handling and escalation
-
-### Phase 5: Quote Database
+### Phase 4: Quote Database
 
 - [X] Create a PostgreSQL DB schema for quotes and suppliers
 - [ ] Integrate Supabase (or local pg via Docker)
 - [ ] Build CRUD APIs for quote history
 
-### Phase 6: Deployment & Docs
+### Phase 5: Deployment & Docs
 
 - [ ] Dockerize the app fully
 - [ ] Deploy to Fly.io or Render (CI/CD optional)
@@ -198,12 +192,6 @@ You’re now connected to a local PostgreSQL instance running on Windows. Your F
 - [X] SentenceTransformer integration
 - [X] FAISS/Chroma vector DB
 - [X] PostgreSQL tables for quotes and suppliers
-
-### Email Layer
-
-- [X] SMTP/Gmail API integration
-- [ ] Parsing inbound emails
-- [ ] Auto-reply with LLM-generated follow-up
 
 ### Deployment
 
