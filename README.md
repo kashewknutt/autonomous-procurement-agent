@@ -1,3 +1,5 @@
+# Autonomous Procurement Agent
+
 ## 📌 Description
 
 An **AI-powered multi-step procurement agent** that autonomously negotiates with suppliers via email or chat. It optimizes decisions using internal price policies, REST API integrations, and autonomous reasoning strategies. The agent handles multiple stages of procurement:
@@ -5,7 +7,6 @@ An **AI-powered multi-step procurement agent** that autonomously negotiates with
 - **Search for suppliers**
 - **Negotiate quotes**
 - **Embed and compare offers**
-- **Draft and send emails**
 - **Handle exceptions**
 - **Update internal databases**
 
@@ -20,7 +21,6 @@ This project aims to replicate real-world enterprise agent use cases and will be
 - Exception detection and escalation
 - Supplier response embedding and similarity matching
 - Quote storage and ranking in a vector DB
-- Email and/or chat interaction
 - Stateless + stateful memory (ReAct / LangChain memory)
 - Cost-aware policy optimization
 
@@ -34,9 +34,41 @@ This project aims to replicate real-world enterprise agent use cases and will be
 | Prompt Logic    | ReAct, Memory Chains, Prompt Engineering        |
 | Embeddings      | FAISS / Chroma (free)                           |
 | Backend         | FastAPI / Flask + PostgreSQL                    |
-| Email API       | Gmail API (OAuth2) / SMTP (Mailgun/SuperMailer) |
-| Deployment      | Docker + Fly.io / Render.com (free tiers)       |
-| Hosting DB      | Supabase (free PostgreSQL + API)                |
+| Hosting DB      | Local Postgres (free PostgreSQL + API)          |
+
+---
+
+### Setup
+
+To setup this repo locally
+
+```bash
+#Clone the repo
+git clone https://github.com/kashewknutt/autonomous-procurement-agent.git
+cd autonomous-procurement-agent
+
+# Setup a virtual env
+python -m venv temp
+temp\Scripts\activate
+
+# Install the required packages
+pip install -r requirements.txt
+
+# Install spacy model
+python -m spacy download en_core_web_sm
+
+# Setup postgres locally and create a redis account
+# Create .env and .env variables
+# GITHUB_API_TOKEN=""
+# DATABASE_URL=""
+# REDIS_URL=""
+
+# Start the server
+uvicorn app.main:app --reload
+
+# Go ahead! Visit http://localhost:8000/docs to test the server
+
+```
 
 ---
 
@@ -131,7 +163,6 @@ You’re now connected to a local PostgreSQL instance running on Windows. Your F
 2. **Agentic Loop**: Integrate LangChain agent to make decisions with tools.
 3. **Scale Vector Search**: Use FAISS/Chroma locally or Supabase’s pgvector.
 4. **Open-Source Friendly**: All tools must run locally or on free-tier services.
-5. **Deployment Lite**: Dockerized + deployed via free-tier platforms like Fly.io or Render.
 6. **Extensibility**: Modular functions, clear API design, config files for tools.
 
 ---
@@ -231,7 +262,4 @@ This project will be open-source. Contributions welcome!
 
 - LangChain Docs
 - [FAISS](https://github.com/facebookresearch/faiss)
-- Gmail API Quickstart
-- [Supabase](https://supabase.com/)
-- [Fly.io (Free Deployment)](https://fly.io/)
 - [ChromaDB](https://www.trychroma.com/)

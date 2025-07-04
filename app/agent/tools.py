@@ -21,7 +21,6 @@ PROCUREMENT_VERTICALS = {
     "utilities": ["electrical", "plumbing", "hvac", "lighting", "power"]
 }
 
-# Load spacy model (you'll need to install: python -m spacy download en_core_web_sm)
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
