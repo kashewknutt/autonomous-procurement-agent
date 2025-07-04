@@ -1,7 +1,8 @@
 ## app/api/routes.py
+from typing import Optional
 from fastapi import APIRouter, Depends, Body
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.agent.subagent_email import get_email_agent
 from app.db.database import SessionLocal
 from app.db.models import Quote
 from app.agent.core import get_agent
@@ -102,12 +103,5 @@ def list_suppliers(db: Session = Depends(get_db)):
 @router.post("/agent")
 def agent_query(input: str = Body(...)):
     agent = get_agent()
-    result = agent.run(input)
-    return {"response": result}
-
-# ----- EMAIL -----
-@router.post("/email")
-def email_route(input: str = Body(...)):
-    agent = get_email_agent()
     result = agent.run(input)
     return {"response": result}

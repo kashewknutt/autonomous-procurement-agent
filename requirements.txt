@@ -7,7 +7,9 @@ sentence-transformers
 python-dotenv
 huggingface_hub
 langchain
+langchain-community
 langchain-openai
 chromadb
 spacy>=3.4.0
 google-api-python-client
+redis==5.0.3

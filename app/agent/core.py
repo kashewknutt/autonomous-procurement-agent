@@ -48,7 +48,7 @@ class GitHubChatModel(BaseChatModel):
         return "github-chat-model"
 
 
-def get_agent():
+def get_agent(session_id: str) -> BaseChatModel:
     llm = GitHubChatModel(temperature=0.3, max_tokens=256)
 
     tools = [
@@ -62,7 +62,7 @@ def get_agent():
         procurement_requirements_form
     ]
     
-    memory = get_memory()
+    memory = get_memory(session_id=session_id)
 
     agent = initialize_agent(
         tools=tools,

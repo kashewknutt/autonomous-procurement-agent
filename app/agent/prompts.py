@@ -43,6 +43,10 @@ Action: procurement_knowledge_tool
 Action Input: "what is RFQ"
 Observation: [explanation]
 Final Answer: An RFQ (Request for Quote) is...
+
+
+Ongoing History (Previous messages):
+{chat_history}
 """
 
 DEFAULT_AGENT_SUFFIX = """
