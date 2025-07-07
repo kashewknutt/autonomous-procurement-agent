@@ -8,6 +8,8 @@ import os
 import requests
 import re
 import spacy
+import httpx
+import json
 from typing import Dict, List, Optional
 
 PROCUREMENT_VERTICALS = {
@@ -38,38 +40,84 @@ def detect_vertical(query: str) -> str:
     return "general"
 
 def extract_preferences(text: str) -> Dict:
-    """Enhanced preference extraction using NLP and pattern matching."""
+    """Extract preferences using regex and fallback to LLM for robust extraction."""
     result = {}
     text_lower = text.lower()
-    
-    # Enhanced budget extraction
+
+    # Regex-based extraction
     budget_patterns = [
         r"(?:under|below|less\s+than|budget\s+of|maximum|up\s+to|max|not\s+more\s+than)\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)",
         r"\$(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:or\s+less|maximum|max|budget)",
         r"budget[:=]\s*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)"
     ]
-    
     for pattern in budget_patterns:
         match = re.search(pattern, text_lower)
         if match:
             budget_str = match.group(1).replace(',', '')
-            result["budget"] = float(budget_str)
+            try:
+                result["budget"] = float(budget_str)
+            except Exception:
+                pass
             break
-    
+
     quantity_patterns = [
         r"(?:minimum|at\s+least|quantity\s+of|qty\s+of|need\s+at\s+least)\s+(\d+)",
-        r"(\d+)\s*(?:units?|pieces?|items?|pcs?)\s*(?:or\s+more|minimum|min)",
+        r"(\d+)\s*(?:units?|pieces?|items?|pcs?|containers?)\s*(?:or\s+more|minimum|min)?",
         r"qty[:=]\s*(\d+)"
     ]
-    
     for pattern in quantity_patterns:
         match = re.search(pattern, text_lower)
         if match:
-            result["min_quantity"] = int(match.group(1))
+            try:
+                result["quantity"] = int(match.group(1))
+            except Exception:
+                pass
             break
 
-    result["vertical"] = detect_vertical(text)
+    # Fallback to LLM extraction if budget or quantity not found
+    if ("budget" not in result or "quantity" not in result):
+        llm_prompt = (
+            "Extract the following fields from the user request as a valid JSON object. "
+            "Fields: quantity (int), budget (float, USD), vertical (string/category), and any other relevant procurement preferences. "
+            "If a field is not present, use null.\n"
+            "Example: For the request 'Find me the best supplier for 100 containers with a budget of 50000$', return: {\"quantity\": 100, \"budget\": 50000, \"vertical\": \"logistics\"}\n"
+            f"Request: {text}\n"
+            "Return only a valid JSON object."
+        )
+        try:
+            payload = {
+                "model": "openai/gpt-4.1-mini",
+                "messages": [
+                    {"role": "user", "content": llm_prompt}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 256,
+            }
+            headers = {
+                "Authorization": f"Bearer {os.environ['GITHUB_API_TOKEN']}",
+                "Content-Type": "application/json",
+            }
+            response = httpx.post(
+                "https://models.github.ai/inference/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            llm_json = response.json()["choices"][0]["message"]["content"]
+            # Try to extract the first JSON object from the response (in case LLM adds text)
+            import re as _re
+            json_match = _re.search(r'\{.*\}', llm_json, _re.DOTALL)
+            if json_match:
+                llm_result = json.loads(json_match.group(0))
+                for k in ["budget", "quantity", "vertical"]:
+                    if k in llm_result and llm_result[k] is not None:
+                        result[k] = llm_result[k]
+        except Exception as e:
+            pass
 
+    if "vertical" not in result:
+        result["vertical"] = detect_vertical(text)
 
     quality_terms = {"premium": 3, "high quality": 2, "standard": 1, "basic": 0}
     for term, level in quality_terms.items():
@@ -80,14 +128,12 @@ def extract_preferences(text: str) -> Dict:
     negotiable_keywords = ["negotiable", "flexible", "discuss", "open to offers"]
     if any(keyword in text_lower for keyword in negotiable_keywords):
         result["negotiable"] = True
-    
-    # Extract material preferences
+
     materials = ["steel", "aluminum", "plastic", "wood", "ceramic", "glass", "rubber", "copper", "brass"]
     found_materials = [mat for mat in materials if mat in text_lower]
     if found_materials:
         result["materials"] = found_materials
-    
-    # Extract size/dimension info
+
     size_pattern = r"(\d+(?:\.\d+)?)\s*(?:x|by|\*)\s*(\d+(?:\.\d+)?)\s*(?:x|by|\*)?\s*(\d+(?:\.\d+)?)?\s*(mm|cm|m|inch|inches|ft|feet)?"
     size_match = re.search(size_pattern, text_lower)
     if size_match:
@@ -97,19 +143,18 @@ def extract_preferences(text: str) -> Dict:
         result["dimensions"] = dimensions
         if size_match.group(4):
             result["dimension_unit"] = size_match.group(4)
-    
-    # Extract urgency
+
     urgent_keywords = ["urgent", "asap", "immediately", "rush", "emergency"]
     if any(keyword in text_lower for keyword in urgent_keywords):
         result["urgent"] = True
-    
-    # Extract quality requirements
+
     quality_keywords = ["high quality", "premium", "standard", "basic", "industrial grade"]
     for quality in quality_keywords:
         if quality in text_lower:
             result["quality"] = quality
             break
     
+    print(f"Extracted preferences: {result}")
     return result
 
 
@@ -168,21 +213,29 @@ def semantic_search_fallback(query: str, all_quotes: List) -> List:
 
 def calculate_best_quote(quotes: List[Quote], quantity: int, budget: Optional[float] = None) -> Dict:
     """Calculate best quote considering quantity and total cost."""
+    print(f"Calculating best quote for quantity: {quantity}, budget: {budget if budget else 'N/A'}")
     viable_quotes = []
+    alternatives = []
     
     for quote in quotes:
-        # Check if supplier can meet quantity
-        if quote.quantity and quantity < quote.quantity:
-            continue  # Skip if we need less than minimum quantity
+        if quantity < quote.quantity:
+            continue
         
         # Calculate actual costs
         if quote.unit_price:
             total_cost = quote.unit_price * quantity
+            alternatives.append({
+                "quote": quote,
+                "total_cost": total_cost,
+                "unit_cost": total_cost / quantity if quantity > 0 else quote.unit_price or 0
+            })
         else:
             total_cost = quote.total_price or 0
         
+        
         # Check budget constraint
-        if budget and total_cost > budget:
+        print(f"Evaluating quote from {quote.supplier}: Total Cost = ${total_cost:.2f}, Budget = ${budget if budget else 'N/A'}")
+        if budget and (total_cost > budget):
             continue
         
         viable_quotes.append({
@@ -192,7 +245,7 @@ def calculate_best_quote(quotes: List[Quote], quantity: int, budget: Optional[fl
         })
     
     if not viable_quotes:
-        return {"viable": False, "alternatives": quotes[:3]}
+        return {"viable": False, "alternatives": alternatives[:3]}
     
     viable_quotes.sort(key=lambda x: x["total_cost"])
     return {"viable": True, "best": viable_quotes[0], "alternatives": viable_quotes[1:3]}
@@ -331,16 +384,17 @@ def find_best_quote_for_quantity(query: str) -> str:
             return "No matching quotes found. Please add quotes to the database first."
         
         # Calculate best option
+        print(f"Found {len(quotes)} quotes for '{query} now calculating best option with quantity {quantity} and budget {budget if budget else 'N/A'}")
         result = calculate_best_quote(quotes, quantity, budget)
         
         if result["viable"]:
             best = result["best"]
-            quote = best["quote"]
+            quote: Quote = best["quote"]
             
             response = f"Best quote for {quantity} units:\n"
             response += f"Supplier: {quote.supplier}\n"
             response += f"Unit Price: ${best['unit_cost']:.2f}\n"
-            response += f"Total Cost: ${best['total_cost']:.2f}\n"
+            response += f"Total Cost: ${best['total_cost']}\n"
             response += f"Details: {quote.content}\n"
             
             if budget:
@@ -352,7 +406,7 @@ def find_best_quote_for_quantity(query: str) -> str:
                 response += f"\nAlternatives:\n"
                 for alt in result["alternatives"][:2]:
                     alt_quote = alt["quote"]
-                    response += f"- {alt_quote.supplier}: ${alt['total_cost']:.2f} total\n"
+                    response += f"- {alt_quote.supplier}: ${alt['total_cost']} total\n"
             
             return response
         
@@ -363,12 +417,13 @@ def find_best_quote_for_quantity(query: str) -> str:
                 response += f" under ${budget:.2f}"
             response += ".\n\nClosest alternatives:\n"
             
-            for quote in result["alternatives"][:3]:
-                if quote.unit_price:
-                    estimated_cost = quote.unit_price * quantity
-                    response += f"- {quote.supplier}: ${estimated_cost:.2f} estimated total"
-                    if quote.quantity and quantity < quote.quantity:
-                        response += f" (min qty: {quote.quantity})"
+            for quote_key in result["alternatives"][:3]:
+                quote_value: Quote = quote_key["quote"]
+                if quote_value.unit_price:
+                    estimated_cost = quote_value.unit_price * quantity
+                    response += f"- {quote_value.supplier}: ${estimated_cost:.2f} estimated total"
+                    if quote_value.quantity and quantity < quote_value.quantity:
+                        response += f" (min qty: {quote_value.quantity})"
                     response += "\n"
             
             return response
